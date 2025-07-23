@@ -1,970 +1,592 @@
 <!DOCTYPE html>
 <html lang="ko">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PhotoGallery (통합 버전)</title>
-
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhotoGallery (완성 버전)</title>
+    
     <!-- React 및 Babel CDN 로드 -->
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
+    
     <!-- Tailwind CSS CDN 로드 -->
     <script src="https://cdn.tailwindcss.com"></script>
-
+    
     <!-- Google Fonts 로드 -->
-    <link
-      href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap"
-      rel="stylesheet"
-    />
-
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    
     <style>
-      body {
-        font-family: "Noto Sans KR", sans-serif;
-      }
-      .dark-placeholder::placeholder {
-        color: #9ca3af; /* Tailwind gray-400 */
-      }
+        body { font-family: 'Noto Sans KR', sans-serif; }
+        .dark-placeholder::placeholder { color: #9ca3af; }
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.85);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+        }
+        .modal-content {
+            position: relative;
+            max-width: 90vw;
+            max-height: 90vh;
+        }
+        .modal-nav-button {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: rgba(0,0,0,0.5);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 48px;
+            height: 48px;
+            font-size: 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-nav-button:hover { background-color: rgba(0,0,0,0.8); }
     </style>
-  </head>
-  <body class="bg-gray-900 text-gray-200">
+</head>
+<body class="bg-gray-900 text-gray-200">
+
     <div id="root"></div>
 
     <script type="text/babel">
-      const { useState, useEffect } = React;
+        const { useState, useEffect, useCallback } = React;
 
-      // ===== 데이터베이스 시뮬레이션 (LocalStorage) =====
-      const db = {
-        getUsers: () =>
-          JSON.parse(localStorage.getItem("pg_users_standalone")) || [],
-        saveUsers: (users) =>
-          localStorage.setItem("pg_users_standalone", JSON.stringify(users)),
-        getPhotos: () =>
-          JSON.parse(localStorage.getItem("pg_photos_standalone")) || [],
-        savePhotos: (photos) =>
-          localStorage.setItem("pg_photos_standalone", JSON.stringify(photos)),
-        getLoggedInUser: () => {
-          const userJson = localStorage.getItem("pg_loggedInUser_standalone");
-          return userJson ? JSON.parse(userJson) : null;
-        },
-        setLoggedInUser: (user) =>
-          localStorage.setItem(
-            "pg_loggedInUser_standalone",
-            JSON.stringify(user)
-          ),
-        logout: () => localStorage.removeItem("pg_loggedInUser_standalone"),
-      };
+        // ===== API 서버 주소 설정 =====
+        const API_URL = 'https://lechabo-backend.onrender.com';
 
-      // ===== 유틸리티 함수 =====
-      function showToast(message, duration = 3000) {
-        const toastContainer = document.getElementById("toast-container");
-        if (!toastContainer) return;
-
-        const toast = document.createElement("div");
-        toast.className =
-          "bg-gray-200 text-gray-800 font-semibold py-3 px-6 rounded-lg shadow-xl transition-all duration-300 transform translate-y-5 opacity-0";
-        toast.textContent = message;
-        toastContainer.appendChild(toast);
-
-        setTimeout(() => {
-          toast.classList.remove("translate-y-5", "opacity-0");
-        }, 10);
-
-        setTimeout(() => {
-          toast.classList.add("opacity-0");
-          toast.addEventListener("transitionend", () => toast.remove());
-        }, duration);
-      }
-
-      // ===== 아이콘 컴포넌트 =====
-      const StarIcon = ({ isFilled, onClick }) => (
-        <svg
-          onClick={onClick}
-          className={`w-6 h-6 cursor-pointer ${
-            isFilled ? "text-yellow-400" : "text-gray-500 hover:text-yellow-300"
-          }`}
-          fill={isFilled ? "currentColor" : "none"}
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth="2"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.196-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
-          />
-        </svg>
-      );
-
-      const UploadIcon = ({ onClick }) => (
-        <svg
-          onClick={onClick}
-          className="w-8 h-8"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth="2"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
-      );
-
-      // ===== 메인 앱 컴포넌트 =====
-      function App() {
-        const [page, setPage] = useState("home");
-        const [currentUser, setCurrentUser] = useState(db.getLoggedInUser());
-        const [photos, setPhotos] = useState(db.getPhotos());
-        const [viewingProfile, setViewingProfile] = useState(null);
-
-        const navigate = (targetPage, params = null) => {
-          if (targetPage === "profile") {
-            // '내 프로필' 클릭 시 params가 없으므로 null로 설정
-            setViewingProfile(params ? params.username : null);
-          }
-          setPage(targetPage);
-          window.location.hash = targetPage;
+        // ===== API 통신 헬퍼 객체 =====
+        const api = {
+            async handleResponse(response) {
+                const data = await response.json();
+                if (!response.ok) throw data;
+                return data;
+            },
+            getPhotos: () => fetch(`${API_URL}/api/photos`).then(res => res.json()),
+            login: (username, password) => fetch(`${API_URL}/api/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) }).then(api.handleResponse),
+            recoverLogin: (username, answer) => fetch(`${API_URL}/api/login/recover`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, answer }) }).then(api.handleResponse),
+            signup: (username, password, question, answer) => fetch(`${API_URL}/api/signup`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password, question, answer }) }).then(api.handleResponse),
+            uploadPhoto: (formData) => fetch(`${API_URL}/api/photos/upload`, { method: 'POST', body: formData }).then(api.handleResponse),
+            uploadProfilePic: (formData) => fetch(`${API_URL}/api/profile/upload`, { method: 'POST', body: formData }).then(api.handleResponse),
+            likePhoto: (photoId, username) => fetch(`${API_URL}/api/photos/like`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ photoId, username }) }).then(api.handleResponse),
+            updateUsername: (oldUsername, newUsername) => fetch(`${API_URL}/api/users/update`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ oldUsername, newUsername }) }).then(api.handleResponse),
+            deletePhoto: (photoId) => fetch(`${API_URL}/api/photos/${photoId}`, { method: 'DELETE' }).then(api.handleResponse),
+            updatePhoto: (photoId, data) => fetch(`${API_URL}/api/photos/${photoId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(api.handleResponse),
+            getUserProfile: (username) => fetch(`${API_URL}/api/users/${username}`).then(api.handleResponse),
         };
 
-        const refreshData = () => {
-          setPhotos(db.getPhotos());
-          setCurrentUser(db.getLoggedInUser());
-        };
-
-        useEffect(() => {
-          const handleHashChange = () => {
-            const hash = window.location.hash.replace("#", "");
-            const newPage = hash || "home";
-            if (newPage !== "profile") {
-              setViewingProfile(null);
-            }
-            setPage(newPage);
-          };
-          window.addEventListener("hashchange", handleHashChange);
-          handleHashChange();
-          return () =>
-            window.removeEventListener("hashchange", handleHashChange);
-        }, []);
-
-        const handleLogout = () => {
-          db.logout();
-          setCurrentUser(null);
-          navigate("home");
-          showToast("로그아웃되었습니다.");
-        };
-
-        const handleLike = (photoId) => {
-          if (!currentUser) {
-            showToast("공감하려면 로그인이 필요합니다.");
-            navigate("login");
-            return;
-          }
-          const allPhotos = db.getPhotos();
-          const photoIndex = allPhotos.findIndex((p) => p.id === photoId);
-          if (photoIndex === -1) return;
-
-          const photo = allPhotos[photoIndex];
-          photo.likes = photo.likes || [];
-          const likeIndex = photo.likes.indexOf(currentUser.username);
-
-          if (likeIndex > -1) {
-            photo.likes.splice(likeIndex, 1);
-          } else {
-            photo.likes.push(currentUser.username);
-          }
-          db.savePhotos(allPhotos);
-          refreshData();
-        };
-
-        const renderPage = () => {
-          switch (page) {
-            case "login":
-              return (
-                <LoginPage
-                  setCurrentUser={setCurrentUser}
-                  navigate={navigate}
-                />
-              );
-            case "signup":
-              return <SignupPage navigate={navigate} />;
-            case "profile":
-              return (
-                <ProfilePage
-                  currentUser={currentUser}
-                  profileUsername={
-                    viewingProfile ||
-                    (currentUser ? currentUser.username : null)
-                  }
-                  photos={photos}
-                  onUpdateUser={refreshData}
-                  onLike={handleLike}
-                  navigate={navigate}
-                />
-              );
-            case "upload":
-              return (
-                <UploadPage
-                  currentUser={currentUser}
-                  navigate={navigate}
-                  onUploadSuccess={refreshData}
-                />
-              );
-            case "home":
-            default:
-              return (
-                <HomePage
-                  photos={photos}
-                  onLike={handleLike}
-                  onViewProfile={(username) =>
-                    navigate("profile", { username })
-                  }
-                  navigate={navigate}
-                />
-              );
-          }
-        };
-
-        return (
-          <div className="min-h-screen">
-            <Header
-              currentUser={currentUser}
-              onLogout={handleLogout}
-              navigate={navigate}
-            />
-            <main className="container mx-auto p-6">{renderPage()}</main>
-            <div
-              id="toast-container"
-              className="fixed bottom-10 right-10 space-y-2 z-50"
-            ></div>
-          </div>
-        );
-      }
-
-      // ===== 컴포넌트들 =====
-      const Header = ({ currentUser, onLogout, navigate }) => (
-        <header className="bg-gray-800 shadow-lg sticky top-0 z-40">
-          <nav className="container mx-auto px-6 py-3 flex justify-between items-center">
-            <a
-              href="#home"
-              onClick={(e) => {
-                e.preventDefault();
-                navigate("home");
-              }}
-              className="text-2xl font-bold text-pink-500 tracking-wider"
-              style={{ fontFamily: "monospace" }}
-            >
-              lechabo
-            </a>
-            <div className="flex items-center space-x-5">
-              {currentUser ? (
-                <>
-                  <a
-                    href="#upload"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      navigate("upload");
-                    }}
-                    className="text-gray-300 hover:text-pink-400 transition"
-                  >
-                    사진 올리기
-                  </a>
-                  <a
-                    href="#profile"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      navigate("profile");
-                    }}
-                    className="text-gray-300 hover:text-pink-400 transition"
-                  >
-                    내 프로필
-                  </a>
-                  <button
-                    onClick={onLogout}
-                    className="text-gray-300 hover:text-red-500 transition"
-                  >
-                    로그아웃
-                  </button>
-                </>
-              ) : (
-                <>
-                  <a
-                    href="#login"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      navigate("login");
-                    }}
-                    className="text-gray-300 hover:text-pink-400 transition"
-                  >
-                    로그인
-                  </a>
-                  <a
-                    href="#signup"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      navigate("signup");
-                    }}
-                    className="bg-pink-500 text-white px-4 py-2 rounded-md hover:bg-pink-600 transition"
-                  >
-                    회원가입
-                  </a>
-                </>
-              )}
-            </div>
-          </nav>
-        </header>
-      );
-
-      const HomePage = ({ photos, onLike, onViewProfile, navigate }) => {
-        const [searchQuery, setSearchQuery] = useState("");
-        const [searchResults, setSearchResults] = useState([]);
-        const [carouselIndex, setCarouselIndex] = useState(0);
-        const currentUser = db.getLoggedInUser();
-
-        useEffect(() => {
-          if (photos.length > 1 && searchQuery === "") {
-            const timer = setInterval(() => {
-              setCarouselIndex((prevIndex) => (prevIndex + 1) % photos.length);
-            }, 4000);
-            return () => clearInterval(timer);
-          }
-        }, [photos.length, searchQuery]);
-
-        const handleSearch = (e) => {
-          const query = e.target.value.toLowerCase();
-          setSearchQuery(query);
-          if (!query) {
-            setSearchResults([]);
-            return;
-          }
-          const results = photos.filter(
-            (p) =>
-              p.title.toLowerCase().includes(query) ||
-              (p.tags &&
-                p.tags.some((tag) => tag.toLowerCase().includes(query)))
-          );
-          setSearchResults(results);
-        };
-
-        const currentCarouselPhoto = photos[carouselIndex];
-
-        return (
-          <div className="relative min-h-[80vh]">
-            <div className="mb-8">
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={handleSearch}
-                placeholder="제목이나 태그로 검색하세요..."
-                className="w-full p-3 bg-gray-700 border-2 border-gray-600 rounded-lg text-white focus:border-pink-500 focus:ring-pink-500 transition dark-placeholder"
-              />
-            </div>
-
-            {searchQuery ? (
-              <div>
-                <h2 className="text-2xl font-bold mb-6 text-white">
-                  검색 결과
-                </h2>
-                {searchResults.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                    {searchResults.map((photo) => (
-                      <div
-                        key={photo.id}
-                        onDoubleClick={() => onLike(photo.id)}
-                        onContextMenu={(e) => {
-                          e.preventDefault();
-                          onViewProfile(photo.uploader);
-                        }}
-                        className="bg-gray-800 rounded-lg shadow-lg overflow-hidden group cursor-pointer"
-                      >
-                        <img
-                          src={photo.url}
-                          alt={photo.title}
-                          className="w-full h-48 object-cover pointer-events-none"
-                        />
-                        <div className="p-4 flex justify-between items-center">
-                          <div>
-                            <h4 className="text-white font-semibold truncate">
-                              {photo.title}
-                            </h4>
-                            <p className="text-sm text-gray-400">
-                              by {photo.uploader}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-1 text-yellow-400">
-                            <span>{photo.likes ? photo.likes.length : 0}</span>
-                            <StarIcon isFilled={true} />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-center text-gray-500 py-10">
-                    검색 결과가 없습니다.
-                  </p>
-                )}
-              </div>
-            ) : photos.length > 0 ? (
-              <div
-                className="relative w-full max-w-4xl mx-auto bg-black rounded-lg shadow-xl overflow-hidden cursor-pointer"
-                style={{ height: "60vh" }}
-                onDoubleClick={() => onLike(currentCarouselPhoto.id)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  onViewProfile(currentCarouselPhoto.uploader);
-                }}
-              >
-                {photos.map((photo, index) => (
-                  <div
-                    key={photo.id}
-                    className={`absolute w-full h-full transition-opacity duration-1000 ${
-                      index === carouselIndex ? "opacity-100" : "opacity-0"
-                    }`}
-                  >
-                    <img
-                      src={photo.url}
-                      alt={photo.title}
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute bottom-0 left-0 w-full p-6 bg-gradient-to-t from-black to-transparent">
-                      <h3 className="text-white text-3xl font-bold">
-                        {photo.title}
-                      </h3>
-                      <p className="text-gray-300">{photo.tags.join(", ")}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-20">
-                <h2 className="text-3xl font-semibold text-gray-500 mb-4">
-                  아직 업로드된 사진이 없습니다.
-                </h2>
-                <p className="text-gray-500 mb-8">
-                  당신의 멋진 순간을 공유해보세요!
-                </p>
-                <a
-                  href="#upload"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    navigate("upload");
-                  }}
-                  className="bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 px-8 rounded-full transition-transform transform hover:scale-105"
-                >
-                  첫 사진 업로드하기
-                </a>
-              </div>
-            )}
-
-            {currentUser && (
-              <button
-                onClick={() => navigate("upload")}
-                className="fixed bottom-8 right-8 bg-pink-500 hover:bg-pink-600 text-white p-4 rounded-full shadow-lg transition-transform hover:scale-110 z-30"
-              >
-                <UploadIcon />
-              </button>
-            )}
-          </div>
-        );
-      };
-
-      const AuthForm = ({
-        title,
-        onSubmit,
-        buttonText,
-        switchText,
-        switchLink,
-        switchLinkText,
-        navigate,
-        confirmPassword = false,
-      }) => (
-        <div className="max-w-md mx-auto bg-gray-800 p-8 mt-10 rounded-xl shadow-lg">
-          <h2 className="text-3xl font-bold text-center mb-8 text-white">
-            {title}
-          </h2>
-          <form onSubmit={onSubmit}>
-            <div className="mb-4">
-              <label className="block text-gray-300 text-sm font-bold mb-2">
-                아이디
-              </label>
-              <input
-                type="text"
-                name="username"
-                className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white dark-placeholder"
-                required
-              />
-            </div>
-            <div className="mb-6">
-              <label className="block text-gray-300 text-sm font-bold mb-2">
-                비밀번호
-              </label>
-              <input
-                type="password"
-                name="password"
-                className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white"
-                required
-              />
-            </div>
-            {confirmPassword && (
-              <div className="mb-6">
-                <label className="block text-gray-300 text-sm font-bold mb-2">
-                  비밀번호 확인
-                </label>
-                <input
-                  type="password"
-                  name="confirmPassword"
-                  className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white"
-                  required
-                />
-              </div>
-            )}
-            <button
-              type="submit"
-              className="w-full bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 px-4 rounded-lg transition"
-            >
-              {buttonText}
-            </button>
-          </form>
-          <p className="text-center mt-6 text-gray-400">
-            {switchText}
-            <a
-              href={switchLink}
-              onClick={(e) => {
-                e.preventDefault();
-                navigate(switchLink.substring(1));
-              }}
-              className="text-pink-400 hover:underline"
-            >
-              {switchLinkText}
-            </a>
-          </p>
-        </div>
-      );
-
-      const LoginPage = ({ setCurrentUser, navigate }) => {
-        const handleSubmit = (e) => {
-          e.preventDefault();
-          const username = e.target.username.value;
-          const password = e.target.password.value;
-          const users = db.getUsers();
-          const user = users.find(
-            (u) => u.username === username && u.password === password
-          );
-
-          if (user) {
-            db.setLoggedInUser(user);
-            setCurrentUser(user);
-            navigate("home");
-            showToast(`${username}님, 환영합니다!`);
-          } else {
-            showToast("아이디 또는 비밀번호가 올바르지 않습니다.");
-          }
-        };
-        return (
-          <AuthForm
-            title="로그인"
-            onSubmit={handleSubmit}
-            buttonText="로그인"
-            switchText="계정이 없으신가요?"
-            switchLink="#signup"
-            switchLinkText="회원가입"
-            navigate={navigate}
-          />
-        );
-      };
-
-      const SignupPage = ({ navigate }) => {
-        const handleSubmit = (e) => {
-          e.preventDefault();
-          const username = e.target.username.value;
-          const password = e.target.password.value;
-          const confirmPassword = e.target.confirmPassword.value;
-
-          if (password !== confirmPassword) {
-            showToast("비밀번호가 일치하지 않습니다.");
-            return;
-          }
-          const users = db.getUsers();
-          if (users.find((u) => u.username === username)) {
-            showToast("이미 존재하는 아이디입니다.");
-            return;
-          }
-
-          const defaultProfilePic = `https://placehold.co/192x192/EFEFEF/3A3A3A?text=${username.charAt(
-            0
-          )}`;
-          users.push({ username, password, profilePic: defaultProfilePic });
-          db.saveUsers(users);
-          showToast("회원가입 성공! 로그인해주세요.");
-          navigate("login");
-        };
-        return (
-          <AuthForm
-            title="회원가입"
-            onSubmit={handleSubmit}
-            buttonText="가입하기"
-            switchText="이미 계정이 있으신가요?"
-            switchLink="#login"
-            switchLinkText="로그인"
-            navigate={navigate}
-            confirmPassword
-          />
-        );
-      };
-
-      const ProfilePage = ({
-        currentUser,
-        profileUsername,
-        photos,
-        onUpdateUser,
-        onLike,
-        navigate,
-      }) => {
-        const [isEditing, setIsEditing] = useState(false);
-        const [newUsername, setNewUsername] = useState(profileUsername || "");
-
-        const users = db.getUsers();
-        const profileUser = users.find((u) => u.username === profileUsername);
-
-        useEffect(() => {
-          if (!profileUsername) {
-            navigate("home");
-          } else {
-            setNewUsername(profileUsername);
-          }
-        }, [profileUsername, navigate]);
-
-        const handleFileChange = (e) => {
-          if (e.target.files && e.target.files[0] && currentUser) {
-            const file = e.target.files[0];
-            const reader = new FileReader();
-            reader.onload = (event) => {
-              const newPicDataUrl = event.target.result;
-              const allUsers = db.getUsers();
-              const userIndex = allUsers.findIndex(
-                (u) => u.username === currentUser.username
-              );
-              if (userIndex > -1) {
-                allUsers[userIndex].profilePic = newPicDataUrl;
-                db.saveUsers(allUsers);
-                db.setLoggedInUser(allUsers[userIndex]);
-                onUpdateUser();
-                showToast("프로필 사진이 변경되었습니다.");
-              }
-            };
-            reader.readAsDataURL(file);
-          }
-        };
-
-        const handleSaveUsername = () => {
-          if (!newUsername.trim()) {
-            showToast("이름을 입력해주세요.");
-            return;
-          }
-          const oldUsername = currentUser.username;
-          if (oldUsername === newUsername) {
-            setIsEditing(false);
-            return;
-          }
-          const allUsers = db.getUsers();
-          if (allUsers.some((u) => u.username === newUsername)) {
-            showToast("이미 사용 중인 이름입니다.");
-            return;
-          }
-
-          const userIndex = allUsers.findIndex(
-            (u) => u.username === oldUsername
-          );
-          allUsers[userIndex].username = newUsername;
-          db.saveUsers(allUsers);
-
-          const allPhotos = db.getPhotos();
-          const updatedPhotos = allPhotos.map((p) => {
-            const newLikes = p.likes
-              ? p.likes.map((like) =>
-                  like === oldUsername ? newUsername : like
-                )
-              : [];
-            if (p.uploader === oldUsername) {
-              return { ...p, uploader: newUsername, likes: newLikes };
-            }
-            return { ...p, likes: newLikes };
-          });
-          db.savePhotos(updatedPhotos);
-
-          db.setLoggedInUser(allUsers[userIndex]);
-          onUpdateUser();
-          setIsEditing(false);
-          showToast("이름이 변경되었습니다.");
-        };
-
-        if (!profileUser) {
-          return (
-            <div className="text-center text-gray-500 py-10">
-              사용자를 찾을 수 없습니다.
-            </div>
-          );
+        // ===== 유틸리티 & 아이콘 =====
+        function showToast(message, duration = 3000) {
+            const toastContainer = document.getElementById('toast-container');
+            if (!toastContainer) return;
+            const toast = document.createElement('div');
+            toast.className = "bg-gray-200 text-gray-800 font-semibold py-3 px-6 rounded-lg shadow-xl transition-all duration-300 transform translate-y-5 opacity-0";
+            toast.textContent = message;
+            toastContainer.appendChild(toast);
+            setTimeout(() => { toast.classList.remove('translate-y-5', 'opacity-0'); }, 10);
+            setTimeout(() => {
+                toast.classList.add('opacity-0');
+                toast.addEventListener('transitionend', () => toast.remove());
+            }, duration);
         }
+        const StarIcon = ({ isFilled, onClick }) => ( <svg onClick={onClick} className={`w-6 h-6 cursor-pointer ${ isFilled ? "text-yellow-400" : "text-gray-500 hover:text-yellow-300" }`} fill={isFilled ? "currentColor" : "none"} viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"> <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.196-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /> </svg> );
+        const UploadIcon = ({ onClick }) => ( <svg onClick={onClick} className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"> <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /> </svg> );
+        const EditIcon = () => ( <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.5L14.732 3.732z" /></svg> );
+        const DeleteIcon = () => ( <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg> );
 
-        const isMyProfile =
-          currentUser && currentUser.username === profileUser.username;
-        const userPhotos = photos.filter(
-          (p) => p.uploader === profileUser.username
-        );
+        // ===== 메인 앱 컴포넌트 =====
+        function App() {
+            const [page, setPage] = useState('home');
+            const [currentUser, setCurrentUser] = useState(() => JSON.parse(localStorage.getItem("pg_user")));
+            const [photos, setPhotos] = useState([]);
+            const [viewingProfile, setViewingProfile] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [modal, setModal] = useState({ isOpen: false, content: null });
 
-        return (
-          <div className="max-w-4xl mx-auto">
-            <div className="bg-gray-800 p-8 mb-8 rounded-xl shadow-lg text-center">
-              <div
-                onContextMenu={
-                  isMyProfile
-                    ? (e) => {
-                        e.preventDefault();
-                        document
-                          .getElementById("profile-upload-input")
-                          ?.click();
-                      }
-                    : null
+            const navigate = useCallback((targetPage, params = null) => {
+                if (targetPage === 'profile' && params && params.username) {
+                    setViewingProfile(params.username);
+                } else {
+                    setViewingProfile(null);
                 }
-                className={`relative w-48 h-48 mx-auto mb-4 group ${
-                  isMyProfile ? "cursor-pointer" : ""
-                }`}
-              >
-                <img
-                  src={profileUser.profilePic}
-                  alt="프로필 이미지"
-                  className="w-full h-full rounded-full object-cover border-4 border-gray-600"
-                />
-                {isMyProfile && (
-                  <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                    <p className="text-white text-sm font-bold">
-                      우클릭하여
-                      <br />
-                      사진 업로드
-                    </p>
-                  </div>
-                )}
-              </div>
-              {isMyProfile && (
-                <input
-                  type="file"
-                  id="profile-upload-input"
-                  onChange={handleFileChange}
-                  className="hidden"
-                  accept="image/*"
-                />
-              )}
+                setPage(targetPage);
+                window.location.hash = targetPage;
+            }, []);
 
-              {!isEditing ? (
-                <div className="flex justify-center items-center gap-4">
-                  <h3 className="text-2xl font-semibold text-white">
-                    {profileUser.username}
-                  </h3>
-                  {isMyProfile && (
-                    <button
-                      onClick={() => setIsEditing(true)}
-                      className="text-sm text-pink-400 hover:underline"
-                    >
-                      수정
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="flex justify-center items-center gap-2">
-                  <input
-                    type="text"
-                    value={newUsername}
-                    onChange={(e) => setNewUsername(e.target.value)}
-                    className="p-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-center"
-                  />
-                  <button
-                    onClick={handleSaveUsername}
-                    className="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm"
-                  >
-                    저장
-                  </button>
-                  <button
-                    onClick={() => setIsEditing(false)}
-                    className="bg-gray-600 hover:bg-gray-500 text-white px-3 py-2 rounded-lg text-sm"
-                  >
-                    취소
-                  </button>
-                </div>
-              )}
-            </div>
+            const refreshData = useCallback(async () => {
+                setLoading(true);
+                try {
+                    const photosData = await api.getPhotos();
+                    setPhotos(photosData);
+                } catch (error) {
+                    showToast("사진을 불러오는데 실패했습니다. 서버가 잠자기 모드일 수 있습니다.");
+                } finally {
+                    setLoading(false);
+                }
+                setCurrentUser(JSON.parse(localStorage.getItem("pg_user")));
+            }, []);
 
-            <h2 className="text-2xl font-bold mb-6 text-white border-b border-gray-700 pb-2">
-              {isMyProfile
-                ? "내가 올린 사진"
-                : `${profileUser.username}님의 사진`}
-            </h2>
-            {userPhotos.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                {userPhotos.map((photo) => (
-                  <div
-                    key={photo.id}
-                    className="bg-gray-800 rounded-lg shadow-lg overflow-hidden group"
-                  >
-                    <img
-                      src={photo.url}
-                      alt={photo.title}
-                      className="w-full h-48 object-cover"
-                    />
-                    <div className="p-4 flex justify-between items-center">
-                      <h4 className="text-white font-semibold truncate">
-                        {photo.title}
-                      </h4>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-yellow-400">
-                          {photo.likes ? photo.likes.length : 0}
-                        </span>
-                        <StarIcon
-                          isFilled={
-                            currentUser &&
-                            photo.likes &&
-                            photo.likes.includes(currentUser.username)
-                          }
-                          onClick={() => onLike(photo.id)}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-center text-gray-500 py-10">
-                아직 업로드한 사진이 없습니다.
-              </p>
-            )}
-          </div>
-        );
-      };
+            useEffect(() => {
+                refreshData();
+                const handleHashChange = () => {
+                    const hash = window.location.hash.replace('#', '');
+                    const newPage = hash || 'home';
+                    if (newPage !== 'profile') setViewingProfile(null);
+                    setPage(newPage);
+                };
+                window.addEventListener('hashchange', handleHashChange);
+                handleHashChange();
+                return () => window.removeEventListener('hashchange', handleHashChange);
+            }, [refreshData]);
 
-      const UploadPage = ({ currentUser, navigate, onUploadSuccess }) => {
-        useEffect(() => {
-          if (!currentUser) navigate("login");
-        }, [currentUser, navigate]);
-
-        const handleSubmit = (e) => {
-          e.preventDefault();
-          const title = e.target.title.value;
-          const tags = e.target.tags.value;
-          const description = e.target.description.value;
-          const file = e.target.photo.files[0];
-
-          if (!file) {
-            showToast("이미지 파일을 선택해주세요.");
-            return;
-          }
-
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            const photos = db.getPhotos();
-            const newPhoto = {
-              id: Date.now(),
-              uploader: currentUser.username,
-              url: event.target.result,
-              title,
-              tags: tags ? tags.split(",").map((t) => t.trim()) : [],
-              description,
-              likes: [],
+            const handleLogin = (user) => {
+                localStorage.setItem("pg_user", JSON.stringify(user));
+                setCurrentUser(user);
             };
-            photos.unshift(newPhoto);
-            db.savePhotos(photos);
-            showToast("사진이 성공적으로 업로드되었습니다!");
-            onUploadSuccess();
-            navigate("home");
-          };
-          reader.readAsDataURL(file);
+
+            const handleLogout = () => {
+                localStorage.removeItem("pg_user");
+                setCurrentUser(null);
+                navigate('home');
+                showToast('로그아웃되었습니다.');
+            };
+
+            const handleLike = async (photoId) => {
+                if (!currentUser) return showToast('로그인이 필요합니다.');
+                try {
+                    await api.likePhoto(photoId, currentUser.username);
+                    await refreshData();
+                } catch (error) { showToast(error.message); }
+            };
+
+            const renderPage = () => {
+                if (loading) return <div className="text-center py-20">로딩 중... 서버가 깨어나는 데 시간이 걸릴 수 있습니다.</div>;
+                switch (page) {
+                    case 'login': return <LoginPage onLogin={handleLogin} navigate={navigate} />;
+                    case 'signup': return <SignupPage navigate={navigate} />;
+                    case 'profile': return <ProfilePage currentUser={currentUser} profileUsername={viewingProfile || (currentUser ? currentUser.username : null)} photos={photos} onUpdateUser={handleLogin} onLike={handleLike} onDataUpdate={refreshData} navigate={navigate} setModal={setModal} />;
+                    case 'upload': return <UploadPage currentUser={currentUser} navigate={navigate} onUploadSuccess={refreshData} />;
+                    default: return <HomePage photos={photos} onLike={handleLike} onViewProfile={(username) => navigate('profile', { username })} navigate={navigate} setModal={setModal} />;
+                }
+            };
+
+            return (
+                <div>
+                    {modal.isOpen && <Modal closeModal={() => setModal({ isOpen: false, content: null })}>{modal.content}</Modal>}
+                    <Header currentUser={currentUser} onLogout={handleLogout} navigate={navigate} />
+                    <main className="container mx-auto p-6">{renderPage()}</main>
+                    <div id="toast-container" className="fixed bottom-10 right-10 space-y-2 z-50"></div>
+                </div>
+            );
+        }
+        
+        const Modal = ({ closeModal, children }) => {
+            return (
+                <div className="modal-overlay" onClick={closeModal}>
+                    <div className="modal-content" onClick={e => e.stopPropagation()}>
+                        {children}
+                    </div>
+                </div>
+            );
         };
 
-        if (!currentUser) return null;
+        const PhotoViewer = ({ photos, startIndex, onClose, onLike, onViewProfile }) => {
+            const [currentIndex, setCurrentIndex] = useState(startIndex);
+            const currentUser = JSON.parse(localStorage.getItem("pg_user"));
 
-        return (
-          <div className="max-w-2xl mx-auto bg-gray-800 p-8 mt-10 rounded-xl shadow-lg">
-            <h2 className="text-3xl font-bold text-center mb-8 text-white">
-              사진 업로드
-            </h2>
-            <form onSubmit={handleSubmit}>
-              <div className="mb-4">
-                <label
-                  htmlFor="title"
-                  className="block text-gray-300 text-sm font-bold mb-2"
-                >
-                  제목
-                </label>
-                <input
-                  type="text"
-                  name="title"
-                  id="title"
-                  className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white dark-placeholder"
-                  required
-                />
-              </div>
-              <div className="mb-4">
-                <label
-                  htmlFor="tags"
-                  className="block text-gray-300 text-sm font-bold mb-2"
-                >
-                  태그 (쉼표로 구분)
-                </label>
-                <input
-                  type="text"
-                  name="tags"
-                  id="tags"
-                  placeholder="예: 여행, 풍경, 고양이"
-                  className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white dark-placeholder"
-                />
-              </div>
-              <div className="mb-4">
-                <label
-                  htmlFor="description"
-                  className="block text-gray-300 text-sm font-bold mb-2"
-                >
-                  상세 설명
-                </label>
-                <textarea
-                  name="description"
-                  id="description"
-                  rows="4"
-                  className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white dark-placeholder"
-                ></textarea>
-              </div>
-              <div className="mb-6">
-                <label
-                  htmlFor="photo"
-                  className="block text-gray-300 text-sm font-bold mb-2"
-                >
-                  이미지 파일
-                </label>
-                <input
-                  type="file"
-                  name="photo"
-                  id="photo"
-                  className="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-pink-500 file:text-white hover:file:bg-pink-600"
-                  accept="image/*"
-                  required
-                />
-              </div>
-              <button
-                type="submit"
-                className="w-full bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 px-4 rounded-lg transition"
-              >
-                업로드
-              </button>
-            </form>
-          </div>
+            const goToPrevious = () => setCurrentIndex(prev => (prev === 0 ? photos.length - 1 : prev - 1));
+            const goToNext = () => setCurrentIndex(prev => (prev === photos.length - 1 ? 0 : prev + 1));
+
+            const photo = photos[currentIndex];
+
+            return (
+                <div className="w-full h-full flex flex-col items-center justify-center" onContextMenu={(e) => { e.preventDefault(); onViewProfile(photo.uploader); onClose(); }}>
+                    <img src={`${API_URL}${photo.url}`} alt={photo.title} className="max-w-full max-h-[80vh] object-contain"/>
+                    <div className="absolute bottom-4 w-full max-w-4xl bg-black bg-opacity-70 p-4 rounded-b-lg text-center">
+                        <div className="flex justify-center items-center gap-4">
+                            <h3 className="text-xl font-bold">{photo.title}</h3>
+                            <div className="flex items-center gap-2">
+                                <StarIcon isFilled={currentUser && photo.likes && photo.likes.includes(currentUser.username)} onClick={() => onLike(photo._id)} />
+                                <span className="text-yellow-400">{photo.likes ? photo.likes.length : 0}</span>
+                            </div>
+                        </div>
+                        <p className="text-gray-300">{photo.description}</p>
+                    </div>
+                    {photos.length > 1 && <>
+                        <button onClick={goToPrevious} className="modal-nav-button left-4">‹</button>
+                        <button onClick={goToNext} className="modal-nav-button right-4">›</button>
+                    </>}
+                </div>
+            );
+        };
+
+        const Header = ({ currentUser, onLogout, navigate }) => (
+            <header className="bg-gray-800 shadow-lg sticky top-0 z-40">
+                <nav className="container mx-auto px-6 py-3 flex justify-between items-center">
+                    <a href="#home" onClick={(e) => { e.preventDefault(); navigate('home'); }} className="text-2xl font-bold text-pink-500 tracking-wider" style={{ fontFamily: 'monospace' }}>
+                        lechabo
+                    </a>
+                    <div className="flex items-center space-x-5">
+                        {currentUser ? (
+                            <>
+                                <a href="#upload" onClick={(e) => { e.preventDefault(); navigate('upload'); }} className="text-gray-300 hover:text-pink-400 transition">사진 올리기</a>
+                                <a href="#profile" onClick={(e) => { e.preventDefault(); navigate('profile'); }} className="text-gray-300 hover:text-pink-400 transition">내 프로필</a>
+                                <button onClick={onLogout} className="text-gray-300 hover:text-red-500 transition">로그아웃</button>
+                            </>
+                        ) : (
+                            <>
+                                <a href="#login" onClick={(e) => { e.preventDefault(); navigate('login'); }} className="text-gray-300 hover:text-pink-400 transition">로그인</a>
+                                <a href="#signup" onClick={(e) => { e.preventDefault(); navigate('signup'); }} className="bg-pink-500 text-white px-4 py-2 rounded-md hover:bg-pink-600 transition">회원가입</a>
+                            </>
+                        )}
+                    </div>
+                </nav>
+            </header>
         );
-      };
 
-      // React 앱 렌더링
-      const container = document.getElementById("root");
-      const root = ReactDOM.createRoot(container);
-      root.render(<App />);
+        const HomePage = ({ photos, onLike, onViewProfile, navigate, setModal }) => {
+            const [searchQuery, setSearchQuery] = useState('');
+            const currentUser = JSON.parse(localStorage.getItem("pg_user"));
+
+            const handleSearch = (e) => setSearchQuery(e.target.value.toLowerCase());
+            
+            const filteredPhotos = searchQuery
+                ? photos.filter(p =>
+                    p.title.toLowerCase().includes(searchQuery) ||
+                    (p.tags && p.tags.some(tag => tag.toLowerCase().includes(searchQuery)))
+                )
+                : photos;
+
+            return (
+                <div className="relative min-h-[80vh]">
+                    <div className="mb-8">
+                        <input type="search" value={searchQuery} onChange={handleSearch} placeholder="제목이나 태그로 검색하세요..." className="w-full p-3 bg-gray-700 border-2 border-gray-600 rounded-lg text-white focus:border-pink-500 focus:ring-pink-500 transition dark-placeholder" />
+                    </div>
+
+                    {filteredPhotos.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                            {filteredPhotos.map((photo, index) => (
+                                <div 
+                                    key={photo._id} 
+                                    onClick={() => onViewProfile(photo.uploader)}
+                                    className="bg-gray-800 rounded-lg shadow-lg overflow-hidden group cursor-pointer"
+                                >
+                                    <img src={`${API_URL}${photo.url}`} alt={photo.title} className="w-full h-48 object-cover"/>
+                                    <div className="p-4">
+                                        <h4 className="text-white font-semibold truncate">{photo.title}</h4>
+                                        <p className="text-sm text-gray-400 hover:underline" onClick={(e) => { e.stopPropagation(); onViewProfile(photo.uploader); }}>by {photo.uploader}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-center text-gray-500 py-10">{searchQuery ? '검색 결과가 없습니다.' : '아직 업로드된 사진이 없습니다.'}</p>
+                    )}
+                    
+                    {currentUser && (
+                        <button onClick={() => navigate('upload')} className="fixed bottom-8 right-8 bg-pink-500 hover:bg-pink-600 text-white p-4 rounded-full shadow-lg transition-transform hover:scale-110 z-30">
+                            <UploadIcon />
+                        </button>
+                    )}
+                </div>
+            );
+        };
+        
+        const AuthForm = ({ title, onSubmit, buttonText, switchText, switchLink, switchLinkText, navigate, children }) => (
+            <div className="max-w-md mx-auto bg-gray-800 p-8 mt-10 rounded-xl shadow-lg">
+                <h2 className="text-3xl font-bold text-center mb-8 text-white">{title}</h2>
+                <form onSubmit={onSubmit}>
+                    {children}
+                    <button type="submit" className="w-full bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 px-4 rounded-lg transition">{buttonText}</button>
+                </form>
+                <p className="text-center mt-6 text-gray-400">
+                    {switchText} 
+                    <a href={switchLink} onClick={(e) => { e.preventDefault(); navigate(switchLink.substring(1)); }} className="text-pink-400 hover:underline">{switchLinkText}</a>
+                </p>
+            </div>
+        );
+
+        const LoginPage = ({ onLogin, navigate }) => {
+            const [recoveryData, setRecoveryData] = useState(null);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                const username = e.target.username.value;
+                const password = e.target.password.value;
+                try {
+                    const data = await api.login(username, password);
+                    onLogin(data.user);
+                    navigate("home");
+                    showToast(data.message);
+                } catch (error) {
+                    if (error.needsRecovery) {
+                        setRecoveryData({ username, question: error.question });
+                    } else {
+                        showToast(error.message || "로그인 실패");
+                    }
+                }
+            };
+            
+            const handleRecovery = async (e) => {
+                e.preventDefault();
+                const answer = e.target.answer.value;
+                try {
+                    const data = await api.recoverLogin(recoveryData.username, answer);
+                    onLogin(data.user);
+                    navigate("home");
+                    showToast(data.message);
+                } catch (error) {
+                    showToast(error.message || "인증 실패");
+                }
+            };
+
+            if (recoveryData) {
+                return (
+                    <AuthForm title="비밀번호 찾기" onSubmit={handleRecovery} buttonText="로그인" switchText="다시 시도하시겠습니까?" switchLink="#login" switchLinkText="로그인" navigate={navigate}>
+                        <div className="mb-4">
+                            <label className="block text-gray-300 text-sm font-bold mb-2">{recoveryData.question}</label>
+                            <input type="text" name="answer" className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white" required />
+                        </div>
+                    </AuthForm>
+                );
+            }
+
+            return (
+                <AuthForm title="로그인" onSubmit={handleSubmit} buttonText="로그인" switchText="계정이 없으신가요?" switchLink="#signup" switchLinkText="회원가입" navigate={navigate}>
+                    <div className="mb-4">
+                        <label className="block text-gray-300 text-sm font-bold mb-2">아이디</label>
+                        <input type="text" name="username" className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white" required />
+                    </div>
+                    <div className="mb-6">
+                        <label className="block text-gray-300 text-sm font-bold mb-2">비밀번호</label>
+                        <input type="password" name="password" className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white" required />
+                    </div>
+                </AuthForm>
+            );
+        };
+
+        const SignupPage = ({ navigate }) => {
+            const securityQuestions = ["가장 좋아했던 초등학교 선생님의 성함은?", "가장 기억에 남는 여행지는?", "어머니의 성함은?"];
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                const { username, password, confirmPassword, question, answer } = e.target.elements;
+                if (password.value !== confirmPassword.value) return showToast('비밀번호가 일치하지 않습니다.');
+                try {
+                    const data = await api.signup(username.value, password.value, question.value, answer.value);
+                    showToast(data.message);
+                    navigate('login');
+                } catch (error) { showToast(error.message); }
+            };
+            return (
+                <AuthForm title="회원가입" onSubmit={handleSubmit} buttonText="가입하기" switchText="이미 계정이 있으신가요?" switchLink="#login" switchLinkText="로그인" navigate={navigate}>
+                    <div className="mb-4"><label className="block text-gray-300 text-sm font-bold mb-2">아이디</label><input type="text" name="username" className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white" required /></div>
+                    <div className="mb-4"><label className="block text-gray-300 text-sm font-bold mb-2">비밀번호</label><input type="password" name="password" className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white" required /></div>
+                    <div className="mb-6"><label className="block text-gray-300 text-sm font-bold mb-2">비밀번호 확인</label><input type="password" name="confirmPassword" className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white" required /></div>
+                    <div className="mb-4"><label className="block text-gray-300 text-sm font-bold mb-2">비밀번호 찾기 질문</label><select name="question" className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white">{securityQuestions.map(q => <option key={q} value={q}>{q}</option>)}</select></div>
+                    <div className="mb-6"><label className="block text-gray-300 text-sm font-bold mb-2">답변</label><input type="text" name="answer" className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white" required /></div>
+                </AuthForm>
+            );
+        };
+
+        const ProfilePage = ({ currentUser, profileUsername, photos, onUpdateUser, onLike, onDataUpdate, navigate, setModal }) => {
+            const [isEditing, setIsEditing] = useState(false);
+            const [newUsername, setNewUsername] = useState('');
+            const [profileUser, setProfileUser] = useState(null);
+            const [editingPhoto, setEditingPhoto] = useState(null);
+
+            useEffect(() => {
+                const fetchProfile = async () => {
+                    if (!profileUsername) return navigate('home');
+                    try {
+                        const user = await api.getUserProfile(profileUsername);
+                        setProfileUser(user);
+                        setNewUsername(user.username);
+                    } catch (error) {
+                        showToast("사용자를 찾을 수 없습니다.");
+                        navigate('home');
+                    }
+                };
+                fetchProfile();
+            }, [profileUsername, navigate]);
+
+            const handleFileChange = async (e) => {
+                if (e.target.files && e.target.files[0] && currentUser) {
+                    const file = e.target.files[0];
+                    const formData = new FormData();
+                    formData.append('profilePic', file);
+                    formData.append('username', currentUser.username);
+                    try {
+                        const data = await api.uploadProfilePic(formData);
+                        const updatedUser = { ...currentUser, profilePic: data.profilePicUrl };
+                        onUpdateUser(updatedUser);
+                        showToast(data.message);
+                    } catch (error) { showToast(error.message); }
+                }
+            };
+            
+            const handleSaveUsername = async () => {
+                try {
+                    const data = await api.updateUsername(currentUser.username, newUsername);
+                    onUpdateUser(data.user);
+                    setIsEditing(false);
+                    showToast(data.message);
+                } catch (error) { showToast(error.message); }
+            };
+
+            const handleDeletePhoto = async (photoId) => {
+                if (window.confirm("정말로 이 사진을 삭제하시겠습니까?")) {
+                    try {
+                        await api.deletePhoto(photoId);
+                        showToast("사진이 삭제되었습니다.");
+                        onDataUpdate();
+                    } catch (error) { showToast(error.message); }
+                }
+            };
+
+            if (!profileUser) return <div className="text-center text-gray-500 py-10">프로필을 불러오는 중...</div>;
+            
+            const isMyProfile = currentUser && currentUser.username === profileUser.username;
+            const userPhotos = photos.filter(p => p.uploader === profileUser.username);
+
+            return (
+                <div className="max-w-4xl mx-auto">
+                    <div className="bg-gray-800 p-8 mb-8 rounded-xl shadow-lg text-center">
+                        <div onContextMenu={isMyProfile ? (e) => { e.preventDefault(); document.getElementById('profile-upload-input')?.click(); } : null} className={`relative w-48 h-48 mx-auto mb-4 group ${isMyProfile ? 'cursor-pointer' : ''}`}>
+                            <img src={profileUser.profilePic.startsWith("http") ? profileUser.profilePic : `${API_URL}${profileUser.profilePic}`} alt="프로필 이미지" className="w-full h-full rounded-full object-cover border-4 border-gray-600" />
+                            {isMyProfile && (
+                                <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <p className="text-white text-sm font-bold">우클릭하여<br/>사진 업로드</p>
+                                </div>
+                            )}
+                        </div>
+                        {isMyProfile && <input type="file" id="profile-upload-input" onChange={handleFileChange} className="hidden" accept="image/*" />}
+                        
+                        {!isEditing ? (
+                            <div className="flex justify-center items-center gap-4">
+                                <h3 className="text-2xl font-semibold text-white">{profileUser.username}</h3>
+                                {isMyProfile && <button onClick={() => setIsEditing(true)} className="text-sm text-pink-400 hover:underline">수정</button>}
+                            </div>
+                        ) : (
+                            <div className="flex justify-center items-center gap-2">
+                                <input type="text" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} className="p-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-center" />
+                                <button onClick={handleSaveUsername} className="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg text-sm">저장</button>
+                                <button onClick={() => setIsEditing(false)} className="bg-gray-600 hover:bg-gray-500 text-white px-3 py-2 rounded-lg text-sm">취소</button>
+                            </div>
+                        )}
+                    </div>
+
+                    <h2 className="text-2xl font-bold mb-6 text-white border-b border-gray-700 pb-2">{isMyProfile ? '내가 올린 사진' : `${profileUser.username}님의 사진`}</h2>
+                    {userPhotos.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                            {userPhotos.map((photo, index) => (
+                                <div key={photo._id} className="bg-gray-800 rounded-lg shadow-lg overflow-hidden group">
+                                    <img src={`${API_URL}${photo.url}`} alt={photo.title} className="w-full h-48 object-cover cursor-pointer" onClick={() => setModal({ isOpen: true, content: <PhotoViewer photos={userPhotos} startIndex={index} onClose={() => setModal({isOpen: false, content: null})} onLike={onLike} /> })}/>
+                                    <div className="p-4">
+                                        <div className="flex justify-between items-start">
+                                            <h4 className="text-white font-semibold truncate pr-2">{photo.title}</h4>
+                                            {isMyProfile && (
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => setEditingPhoto(photo)} className="text-gray-400 hover:text-white"><EditIcon /></button>
+                                                    <button onClick={() => handleDeletePhoto(photo._id)} className="text-gray-400 hover:text-red-500"><DeleteIcon /></button>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2 mt-2">
+                                            <StarIcon isFilled={currentUser && photo.likes && photo.likes.includes(currentUser.username)} onClick={() => onLike(photo._id)} />
+                                            <span className="text-sm text-yellow-400">{photo.likes ? photo.likes.length : 0}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : ( <p className="text-center text-gray-500 py-10">아직 업로드한 사진이 없습니다.</p> )}
+                    {editingPhoto && <EditPhotoModal photo={editingPhoto} onClose={() => setEditingPhoto(null)} onUpdate={onDataUpdate} />}
+                </div>
+            );
+        };
+        
+        const UploadPage = ({ currentUser, navigate, onUploadSuccess }) => {
+             useEffect(() => {
+                if (!currentUser) navigate("login");
+            }, [currentUser, navigate]);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                formData.append("uploader", currentUser.username);
+
+                try {
+                    await api.uploadPhoto(formData);
+                    showToast("사진이 성공적으로 업로드되었습니다!");
+                    onUploadSuccess();
+                    navigate("home");
+                } catch (error) {
+                    showToast(error.message);
+                }
+            };
+
+            if (!currentUser) return null;
+
+            return (
+                <div className="max-w-2xl mx-auto bg-gray-800 p-8 mt-10 rounded-xl shadow-lg">
+                    <h2 className="text-3xl font-bold text-center mb-8 text-white">사진 업로드</h2>
+                    <form onSubmit={handleSubmit}>
+                        <div className="mb-4"><label htmlFor="title" className="block text-gray-300 text-sm font-bold mb-2">제목</label><input type="text" name="title" id="title" className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white dark-placeholder" required /></div>
+                        <div className="mb-4"><label htmlFor="tags" className="block text-gray-300 text-sm font-bold mb-2">태그 (쉼표로 구분)</label><input type="text" name="tags" id="tags" placeholder="예: 여행, 풍경, 고양이" className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white dark-placeholder" /></div>
+                        <div className="mb-4"><label htmlFor="description" className="block text-gray-300 text-sm font-bold mb-2">상세 설명</label><textarea name="description" id="description" rows="4" className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white dark-placeholder"></textarea></div>
+                        <div className="mb-6"><label htmlFor="photo" className="block text-gray-300 text-sm font-bold mb-2">이미지 파일</label><input type="file" name="photo" id="photo" className="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-pink-500 file:text-white hover:file:bg-pink-600" accept="image/*" required /></div>
+                        <button type="submit" className="w-full bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 px-4 rounded-lg transition">업로드</button>
+                    </form>
+                </div>
+            );
+        };
+
+        const EditPhotoModal = ({ photo, onClose, onUpdate }) => {
+            const [title, setTitle] = useState(photo.title);
+            const [tags, setTags] = useState(photo.tags.join(', '));
+            const [description, setDescription] = useState(photo.description);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                try {
+                    await api.updatePhoto(photo._id, { title, tags, description });
+                    showToast("사진 정보가 수정되었습니다.");
+                    onUpdate();
+                    onClose();
+                } catch (error) {
+                    showToast(error.message);
+                }
+            };
+
+            return (
+                <Modal closeModal={onClose}>
+                    <div className="bg-gray-800 p-8 rounded-xl shadow-lg w-full max-w-2xl">
+                        <h2 className="text-3xl font-bold text-center mb-8 text-white">사진 정보 수정</h2>
+                        <form onSubmit={handleSubmit}>
+                            <div className="mb-4"><label className="block text-gray-300 text-sm font-bold mb-2">제목</label><input type="text" value={title} onChange={e => setTitle(e.target.value)} className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white" required /></div>
+                            <div className="mb-4"><label className="block text-gray-300 text-sm font-bold mb-2">태그 (쉼표로 구분)</label><input type="text" value={tags} onChange={e => setTags(e.target.value)} className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white" /></div>
+                            <div className="mb-6"><label className="block text-gray-300 text-sm font-bold mb-2">상세 설명</label><textarea value={description} onChange={e => setDescription(e.target.value)} rows="4" className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white"></textarea></div>
+                            <button type="submit" className="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg transition">수정 완료</button>
+                        </form>
+                    </div>
+                </Modal>
+            );
+        };
+        
+        const container = document.getElementById('root');
+        const root = ReactDOM.createRoot(container);
+        root.render(<App />);
     </script>
-  </body>
-</html>
+</body>
+</ht
