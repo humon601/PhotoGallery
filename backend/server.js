@@ -26,11 +26,21 @@ const pool = mysql.createPool({
   password: process.env.MYSQLPASSWORD,
   database: process.env.MYSQLDATABASE,
   port: process.env.MYSQLPORT,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-  ssl: { rejectUnauthorized: true }, // 보안 연결을 위해 추가
+  ssl: { rejectUnauthorized: true },
 });
+
+// --- 파일 업로드 설정 ---
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dest = path.join(uploadsDir, file.fieldname);
+    if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+    cb(null, dest);
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + path.extname(file.originalname));
+  },
+});
+const upload = multer({ storage: storage });
 
 // --- API 라우트 ---
 
@@ -122,7 +132,10 @@ app.get("/api/photos", async (req, res) => {
             FROM photos p
             ORDER BY p.createdAt DESC
         `);
-    photos.forEach((p) => (p.likes = p.likes || []));
+    photos.forEach((p) => {
+      p.likes = p.likes || [];
+      if (typeof p.tags === "string") p.tags = JSON.parse(p.tags);
+    });
     res.status(200).json(photos);
   } catch (error) {
     res.status(500).json({ message: "사진을 불러오지 못했습니다." });
